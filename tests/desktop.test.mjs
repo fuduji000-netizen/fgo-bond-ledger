@@ -90,6 +90,7 @@ test("Windows 发布构建会生成包含安装包 SHA-512 的 latest.yml", asyn
   assert.equal(manifest.scripts["build:update-manifest"], "node scripts/generate-update-manifest.mjs");
   assert.match(script, /createHash\("sha512"\)/);
   assert.match(script, /resolve\(releaseDirectory, "latest\.yml"\)/);
-  assert.match(script, /Setup \$\{version\}\.exe/);
+  assert.equal(manifest.build.artifactName, "fgo-bond-ledger-${version}.${ext}");
+  assert.match(script, /fgo-bond-ledger-\${version}\.exe/);
   assert.match(script, /releaseDate:/);
 });

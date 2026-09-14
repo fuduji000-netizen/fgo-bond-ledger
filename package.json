@@ -1,6 +1,6 @@
 {
   "name": "fgo-bond-ledger",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "main": "desktop/main.cjs",
@@ -23,6 +23,7 @@
     "appId": "com.fuduj.fgobondledger",
     "productName": "迦勒底羁绊账本",
     "asar": true,
+    "artifactName": "fgo-bond-ledger-${version}.${ext}",
     "directories": {
       "output": "release"
     },

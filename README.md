@@ -83,4 +83,5 @@ npm run dist:win
 - 每次先提高 `package.json` 的版本号，再执行 `npm run dist:win`。该命令会在 `release` 目录生成 NSIS 安装包、对应 `.blockmap` 以及带 SHA-512 校验值的 `latest.yml`。将它们**原样**上传到上述目录，三者不得混用不同构建的产物。
 - 只有已打包的 Windows 桌面版能够在线更新；直接打开 `index.html` 或通过未打包开发环境运行时，软件会明确说明该运行方式不支持在线更新。
 - 当前项目已绑定 GitHub Releases 更新目录：`https://github.com/fuduji000-netizen/fgo-bond-ledger/releases/latest/download`。发布新版本时，请将同一次构建生成的 `latest.yml`、NSIS 安装包和 `.blockmap` 一起上传到 GitHub Release。
+- Windows 发布包使用 ASCII 文件名（如 `fgo-bond-ledger-0.1.1.exe`），避免 GitHub Release 上传时规范化非 ASCII 文件名后导致 `latest.yml` 无法找到安装包。
 

@@ -11,15 +11,11 @@ const version = String(packageJson.version || "").trim();
 if (!version) throw new Error("package.json 缺少版本号，无法生成更新元数据");
 
 const releaseFiles = await readdir(releaseDirectory, { withFileTypes: true });
-const installer = releaseFiles.find((entry) => (
-  entry.isFile()
-  && entry.name.endsWith(".exe")
-  && !entry.name.endsWith(".__uninstaller.exe")
-  && entry.name.includes(`Setup ${version}.exe`)
-));
+const installerName = `fgo-bond-ledger-${version}.exe`;
+const installer = releaseFiles.find((entry) => entry.isFile() && entry.name === installerName);
 
 if (!installer) {
-  throw new Error(`未找到 v${version} 的 NSIS 安装包；请先执行 electron-builder --win nsis --x64`);
+  throw new Error(`未找到 ${installerName}；请先执行 electron-builder --win nsis --x64`);
 }
 
 const installerPath = resolve(releaseDirectory, installer.name);
