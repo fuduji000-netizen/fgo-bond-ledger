@@ -78,6 +78,12 @@
             </div>
 
             <div class="setting-group divider-top">
+              <label class="field-label" for="master-equip">御主礼装（BBC）</label>
+              <select id="master-equip" aria-describedby="master-equip-hint"></select>
+              <small class="field-hint" id="master-equip-hint">导出 BBC 时写入 master_equip：0</small>
+            </div>
+
+            <div class="setting-group divider-top">
               <label class="field-label" for="friend-position">好友位置</label>
               <select id="friend-position"></select>
               <label class="field-label" for="cost-cap">队伍 Cost 上限</label>
@@ -202,6 +208,35 @@
       <div class="picker-list ce-list owned-ce-list" id="owned-ce-list"></div>
     </dialog>
 
+    <dialog class="picker-modal compact-modal" id="bbchannel-assist-mode-modal" aria-labelledby="bbchannel-assist-mode-title">
+      <div class="modal-head">
+        <div>
+          <span class="section-kicker">BBCHANNEL ASSIST</span>
+          <h2 id="bbchannel-assist-mode-title">设置 BBC 好友识别条件</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-modal="bbchannel-assist-mode-modal" aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-content">
+        <p id="bbchannel-assist-mode-hint">导出前可选择 BBC 的助战识别模式和好友筛选条件。</p>
+        <label class="field-label" for="bbchannel-assist-mode">识别模式</label>
+        <select id="bbchannel-assist-mode"></select>
+        <label class="field-label" for="bbchannel-np-level">好友宝具等级</label>
+        <select id="bbchannel-np-level">
+          <option value="1">宝1</option>
+          <option value="2">宝2</option>
+          <option value="3">宝3</option>
+          <option value="4">宝4</option>
+          <option value="5">宝5</option>
+        </select>
+        <label class="field-label" for="bbchannel-servant-level">好友从者等级（留空则不限定）</label>
+        <input id="bbchannel-servant-level" type="number" min="1" max="120" step="1" inputmode="numeric" placeholder="不限定" />
+        <div class="dialog-actions">
+          <button class="button primary" id="bbchannel-assist-mode-confirm" type="button">导出队伍配置</button>
+          <button class="button" id="bbchannel-assist-mode-cancel" type="button">取消</button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog class="picker-modal compact-modal" id="update-modal" aria-labelledby="update-title">
       <div class="modal-head">
         <div>
@@ -237,7 +272,7 @@
     </dialog>
 
     <script src="./data/mooncell-snapshot.js"></script>
-    <script src="./src/app.standalone.js?v=20260913-4"></script>
+    <script src="./src/app.standalone.js?v=20260915-2"></script>
   </body>
 </html>
 

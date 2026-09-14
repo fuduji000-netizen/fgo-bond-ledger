@@ -107,6 +107,25 @@ test("未到 Lv.10 时可以跨越多个普通阶段", () => {
   assert.deepEqual(result.rewards.map((entry) => entry.level), [1, 2]);
 });
 
+
+
+test("单场跨过 Lv.0 后保留实际溢出牵绊", () => {
+  const zeroProfile = { star: 5, bondPoints: [3000, 2000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000] };
+  const result = applyBattles({ level: 0, progress: 0, profile: zeroProfile }, { ...context, baseBond: 3260 }, 1);
+  assert.equal(result.slot.level, 1);
+  assert.equal(result.slot.progress, 260);
+  assert.equal(result.battlesApplied, 1);
+  assert.equal(result.battlesSkipped, 0);
+});
+
+test("一场可以连续跨过多个 Lv.0 至 Lv.10 阶段", () => {
+  const shortProfile = { star: 5, bondPoints: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100] };
+  const result = applyBattles({ level: 0, progress: 0, profile: shortProfile }, { ...context, baseBond: 850 }, 1);
+  assert.equal(result.slot.level, 8);
+  assert.equal(result.slot.progress, 50);
+  assert.deepEqual(result.rewards.map((entry) => entry.level), [1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
 test("Lv.10 之前会自动跳转等级，达到 Lv.10 时不显示上限提示", () => {
   const result = applyBattles({ level: 9, progress: 900, unlockedLevel: 10, profile }, context, 10);
   assert.equal(result.slot.level, 10);
@@ -124,8 +143,8 @@ test("Lv.10 及以后填满阶段时停留在当前等级，等待手动提高�
   assert.equal(result.slot.level, 10);
   assert.equal(result.slot.progress, getRequirement(profile, 10));
   assert.equal(result.slot.awaitingUnlock, true);
-  assert.equal(result.battlesApplied, 2);
-  assert.equal(result.battlesSkipped, 2);
+  assert.equal(result.battlesApplied, 1);
+  assert.equal(result.battlesSkipped, 3);
   assert.match(result.stoppedReason, /Lv\.10/);
 });
 
@@ -257,7 +276,7 @@ test("占星茶壶数量会缩短场数，并优先用于前几场", () => {
 
   const result = applyBattles({ level: 0, progress: 0, profile: teaProfile }, { ...context, teaPotCount: 2 }, 4);
   assert.equal(result.slot.level, 1);
-  assert.equal(result.slot.progress, 0);
+  assert.equal(result.slot.progress, 50);
   assert.equal(result.battlesApplied, 4);
   assert.equal(result.teaPotBattlesApplied, 2);
 });

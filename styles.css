@@ -116,6 +116,7 @@ body.desktop-runtime .desktop-only { display: inline-flex; }
 .setting-group { display: grid; gap: 7px; padding: 15px 0; }
 .divider-top { border-top: 1px solid var(--line); }
 .field-label { color: var(--ink-soft); font-size: 12px; font-weight: 700; }
+.field-hint { color: var(--muted); font-size: 11px; line-height: 1.4; }
 input, select { width: 100%; min-height: 34px; padding: 7px 9px; border: 1px solid var(--line-dark); border-radius: 4px; background: #ffffff; color: var(--ink); outline: none; }
 input:focus, select:focus { border-color: var(--teal); box-shadow: 0 0 0 2px rgba(8, 124, 120, 0.15); }
 .toggle-row { min-height: 30px; gap: 8px; color: var(--ink-soft); font-size: 13px; font-weight: 650; }

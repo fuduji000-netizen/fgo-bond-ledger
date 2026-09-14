@@ -346,11 +346,49 @@ export function applyBattles(slot, teamContext, battleCount) {
   let progress = initial.progress;
   let teaPotBattlesRemaining = Math.min(count, getTeaPotCount(teamContext));
 
-  while (remainingBattles > 0 && level < MAX_BOND_LEVEL) {
+  let overflowPoints = 0;
+  while ((remainingBattles > 0 || overflowPoints > 0) && level < MAX_BOND_LEVEL) {
     const requirement = getRequirement(slot.profile, level);
+    const pointsNeeded = Math.max(0, requirement - progress);
+    // 阶段刚好填满时先升级；如果还有溢出点数，继续在同一场结算。
+    if (pointsNeeded === 0) {
+      if (level >= 10) {
+        progress = requirement;
+        result.slot.awaitingUnlock = true;
+        result.stoppedReason = getCeilingMessage(level, level);
+        break;
+      }
+      level += 1;
+      progress = 0;
+      result.rewards.push({ level, rewards: getRewardForLevel(level, slot.profile?.star) });
+      continue;
+    }
+
+    // 溢出点数来自已经记入的战斗，不应再次消耗战斗次数。
+    if (overflowPoints > 0) {
+      const appliedPoints = overflowPoints;
+      overflowPoints = 0;
+      if (appliedPoints < pointsNeeded) {
+        progress += appliedPoints;
+        continue;
+      }
+      overflowPoints = appliedPoints - pointsNeeded;
+      if (level >= 10) {
+        progress = requirement;
+        result.slot.awaitingUnlock = true;
+        result.stoppedReason = getCeilingMessage(level, level);
+        break;
+      }
+      level += 1;
+      progress = 0;
+      result.rewards.push({ level, rewards: getRewardForLevel(level, slot.profile?.star) });
+      continue;
+    }
+
     const usesTeaPot = teaPotBattlesRemaining > 0;
     const gain = usesTeaPot ? initial.teaPotBattle.gain : initial.normalBattle.gain;
     const phaseBattles = usesTeaPot ? teaPotBattlesRemaining : remainingBattles;
+
     if (gain <= 0) {
       if (usesTeaPot) {
         teaPotBattlesRemaining = 0;
@@ -359,30 +397,26 @@ export function applyBattles(slot, teamContext, battleCount) {
       result.stoppedReason = "单场牵绊为 0，未记入剩余战斗";
       break;
     }
-    const pointsNeeded = Math.max(0, requirement - progress);
-    const neededBattles = Math.ceil(pointsNeeded / gain);
 
-    if (phaseBattles < neededBattles) {
-      progress += phaseBattles * gain;
-      result.battlesApplied += phaseBattles;
-      remainingBattles -= phaseBattles;
-      if (usesTeaPot) {
-        teaPotBattlesRemaining -= phaseBattles;
-        result.teaPotBattlesApplied += phaseBattles;
-        continue;
-      }
+    const neededBattles = Math.ceil(pointsNeeded / gain);
+    const appliedBattles = Math.min(phaseBattles, neededBattles);
+    const appliedPoints = appliedBattles * gain;
+
+    result.battlesApplied += appliedBattles;
+    remainingBattles -= appliedBattles;
+    if (usesTeaPot) {
+      teaPotBattlesRemaining -= appliedBattles;
+      result.teaPotBattlesApplied += appliedBattles;
+    }
+
+    if (appliedBattles < neededBattles) {
+      progress += appliedPoints;
+      if (usesTeaPot) continue;
       break;
     }
 
-    result.battlesApplied += neededBattles;
-    remainingBattles -= neededBattles;
-    if (usesTeaPot) {
-      teaPotBattlesRemaining -= neededBattles;
-      result.teaPotBattlesApplied += neededBattles;
-    }
-
-    // Lv.0 到 Lv.10 会自动跨阶段；Lv.10 之后必须保留在当前等级，
-    // 等用户在游戏内开启后手动改为下一牵绊等级。
+    // 保留本次批量记入超过当前阶段阈值的点数，供后续阶段继续结算。
+    overflowPoints = appliedPoints - pointsNeeded;
     if (level >= 10) {
       progress = requirement;
       result.slot.awaitingUnlock = true;

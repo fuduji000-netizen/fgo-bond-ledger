@@ -350,11 +350,49 @@ function applyBattles(slot, teamContext, battleCount) {
   let progress = initial.progress;
   let teaPotBattlesRemaining = Math.min(count, getTeaPotCount(teamContext));
 
-  while (remainingBattles > 0 && level < MAX_BOND_LEVEL) {
+  let overflowPoints = 0;
+  while ((remainingBattles > 0 || overflowPoints > 0) && level < MAX_BOND_LEVEL) {
     const requirement = getRequirement(slot.profile, level);
+    const pointsNeeded = Math.max(0, requirement - progress);
+    // 阶段刚好填满时先升级；如果还有溢出点数，继续在同一场结算。
+    if (pointsNeeded === 0) {
+      if (level >= 10) {
+        progress = requirement;
+        result.slot.awaitingUnlock = true;
+        result.stoppedReason = getCeilingMessage(level, level);
+        break;
+      }
+      level += 1;
+      progress = 0;
+      result.rewards.push({ level, rewards: getRewardForLevel(level, slot.profile?.star) });
+      continue;
+    }
+
+    // 溢出点数来自已经记入的战斗，不应再次消耗战斗次数。
+    if (overflowPoints > 0) {
+      const appliedPoints = overflowPoints;
+      overflowPoints = 0;
+      if (appliedPoints < pointsNeeded) {
+        progress += appliedPoints;
+        continue;
+      }
+      overflowPoints = appliedPoints - pointsNeeded;
+      if (level >= 10) {
+        progress = requirement;
+        result.slot.awaitingUnlock = true;
+        result.stoppedReason = getCeilingMessage(level, level);
+        break;
+      }
+      level += 1;
+      progress = 0;
+      result.rewards.push({ level, rewards: getRewardForLevel(level, slot.profile?.star) });
+      continue;
+    }
+
     const usesTeaPot = teaPotBattlesRemaining > 0;
     const gain = usesTeaPot ? initial.teaPotBattle.gain : initial.normalBattle.gain;
     const phaseBattles = usesTeaPot ? teaPotBattlesRemaining : remainingBattles;
+
     if (gain <= 0) {
       if (usesTeaPot) {
         teaPotBattlesRemaining = 0;
@@ -363,30 +401,26 @@ function applyBattles(slot, teamContext, battleCount) {
       result.stoppedReason = "单场牵绊为 0，未记入剩余战斗";
       break;
     }
-    const pointsNeeded = Math.max(0, requirement - progress);
-    const neededBattles = Math.ceil(pointsNeeded / gain);
 
-    if (phaseBattles < neededBattles) {
-      progress += phaseBattles * gain;
-      result.battlesApplied += phaseBattles;
-      remainingBattles -= phaseBattles;
-      if (usesTeaPot) {
-        teaPotBattlesRemaining -= phaseBattles;
-        result.teaPotBattlesApplied += phaseBattles;
-        continue;
-      }
+    const neededBattles = Math.ceil(pointsNeeded / gain);
+    const appliedBattles = Math.min(phaseBattles, neededBattles);
+    const appliedPoints = appliedBattles * gain;
+
+    result.battlesApplied += appliedBattles;
+    remainingBattles -= appliedBattles;
+    if (usesTeaPot) {
+      teaPotBattlesRemaining -= appliedBattles;
+      result.teaPotBattlesApplied += appliedBattles;
+    }
+
+    if (appliedBattles < neededBattles) {
+      progress += appliedPoints;
+      if (usesTeaPot) continue;
       break;
     }
 
-    result.battlesApplied += neededBattles;
-    remainingBattles -= neededBattles;
-    if (usesTeaPot) {
-      teaPotBattlesRemaining -= neededBattles;
-      result.teaPotBattlesApplied += neededBattles;
-    }
-
-    // Lv.0 到 Lv.10 会自动跨阶段；Lv.10 之后必须保留在当前等级，
-    // 等用户在游戏内开启后手动改为下一牵绊等级。
+    // 保留本次批量记入超过当前阶段阈值的点数，供后续阶段继续结算。
+    overflowPoints = appliedPoints - pointsNeeded;
     if (level >= 10) {
       progress = requirement;
       result.slot.awaitingUnlock = true;
@@ -1237,8 +1271,8 @@ Object.assign(exports, { recommendBondCraftEssences });
 /**
  * BBchannel 队伍档案（settings/*.json）的纯数据转换。
  *
- * 账本没有保存御主礼装或战斗策略；因此只生成 BBC 可载入的队伍、助战和
- * 连接默认项，不写入或覆盖任何 BBchannel 现有配置。
+ * 账本保存可选的御主礼装，并生成 BBC 可载入的队伍、助战、御主礼装和
+ * 连接默认项；不写入或覆盖任何 BBchannel 现有配置。
  */
 
 // Mooncell 与 BBC 中文从者名的已知差异。优先使用 ID，避免同名不同灵基误替换。
@@ -1270,6 +1304,99 @@ const BBC_CONNECTION_DEFAULTS = Object.freeze({
   specialKeys: [],
   server: "CH",
 });
+
+/** BBchannel 支持的助战识别模式，值必须与 BBC 配置文件中的选项文本一致。 */
+const BBC_ASSIST_MODES = Object.freeze([
+  "不识别",
+  "仅礼装",
+  "仅从者",
+  "从者礼装",
+  "冠位助战",
+  "冠位助战&礼装",
+]);
+
+/**
+ * BBchannel master_info.json 中的御主礼装编号。
+ * SN 是 BBC 队伍配置 master_equip 使用的 0 起始序号。
+ */
+const BBC_MASTER_EQUIPS = Object.freeze([
+  { sn: 0, name: "2004年的碎片" },
+  { sn: 1, name: "魔术礼装·阿特拉斯院制服" },
+  { sn: 2, name: "第五真说要素环境用迦勒底制服" },
+  { sn: 3, name: "金色庆典" },
+  { sn: 4, name: "迦勒底船长" },
+  { sn: 5, name: "迦勒底开拓者" },
+  { sn: 6, name: "魔术礼装·迦勒底战斗服" },
+  { sn: 7, name: "魔术礼装·迦勒底" },
+  { sn: 8, name: "魔术礼装·极地用迦勒底制服" },
+  { sn: 9, name: "魔术礼装·魔术协会制服" },
+  { sn: 10, name: "热带夏日" },
+  { sn: 11, name: "明亮夏日" },
+  { sn: 12, name: "王室品牌" },
+  { sn: 13, name: "华美的新年" },
+  { sn: 14, name: "月之海的记忆" },
+  { sn: 15, name: "月之背面的记忆" },
+  { sn: 16, name: "万圣夜王室装" },
+  { sn: 17, name: "决战用迦勒底制服" },
+  { sn: 18, name: "总耶高校学生服" },
+  { sn: 19, name: "新春装束" },
+  { sn: 20, name: "夏日街头" },
+  { sn: 21, name: "白色圣诞" },
+  { sn: 22, name: "三咲高校学生服" },
+  { sn: 23, name: "冬日便装" },
+  { sn: 24, name: "浅葱的队服" },
+  { sn: 25, name: "标准·迦勒底制服" },
+  { sn: 26, name: "二十八怪物" },
+]);
+
+const BBC_MASTER_EQUIP_SNS = new Set(BBC_MASTER_EQUIPS.map(({ sn }) => sn));
+
+/** 账本模式切换后，导出对话框默认采用的 BBC 识别模式。 */
+function getDefaultBbchannelAssistMode(ledgerMode = "normal") {
+  return ledgerMode === "grand" ? "冠位助战" : "从者礼装";
+}
+
+/**
+ * BBC 队伍档案中的好友筛选条件默认值。
+ * 冠位助战常用满级、宝具五；普通模式默认宝具一且不限制从者等级。
+ */
+function getDefaultBbchannelFriendRequirements(ledgerMode = "normal") {
+  return ledgerMode === "grand"
+    ? { npLevel: 5, servantLevel: 120 }
+    : { npLevel: 1, servantLevel: null };
+}
+
+function normalizeBbchannelAssistMode(value, fallback = "从者礼装") {
+  const mode = nonEmptyText(value);
+  if (mode && BBC_ASSIST_MODES.includes(mode)) return mode;
+  return BBC_ASSIST_MODES.includes(fallback) ? fallback : "从者礼装";
+}
+
+/** BBC 的 master_equip 是 master_info.json 中的 SN 序号。 */
+function normalizeBbchannelMasterEquip(value, fallback = 0) {
+  const normalizedFallback = BBC_MASTER_EQUIP_SNS.has(Math.trunc(Number(fallback)))
+    ? Math.trunc(Number(fallback))
+    : 0;
+  const sn = Math.trunc(Number(value));
+  return BBC_MASTER_EQUIP_SNS.has(sn) ? sn : normalizedFallback;
+}
+
+/** BBC 的 NPlevel 是好友宝具等级筛选，合法值为宝1–宝5。 */
+function normalizeBbchannelNpLevel(value, fallback = 1) {
+  const normalizedFallback = Math.min(Math.max(Math.floor(Number(fallback) || 1), 1), 5);
+  const level = Math.floor(Number(value));
+  return level >= 1 && level <= 5 ? level : normalizedFallback;
+}
+
+/**
+ * BBC 的 servantLevel 是好友从者等级筛选。空值表示不写入该条件；
+ * 有效范围与游戏从者等级一致，为 Lv.1–Lv.120。
+ */
+function normalizeBbchannelServantLevel(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const level = Math.floor(Number(value));
+  return level >= 1 && level <= 120 ? level : null;
+}
 
 function nonEmptyText(value) {
   const text = String(value || "").trim();
@@ -1308,7 +1435,15 @@ function resolveBbchannelServantName(servant) {
  * 创建不带 page0/page1/page2 包装的 BBchannel 队伍档案。
  * 该档案可由 BBC 的“文件”菜单载入，不能也不会改写 scripts_settings.json。
  */
-function createBbchannelTeamConfig({ slots, friendPosition, getServant } = {}) {
+function createBbchannelTeamConfig({
+  slots,
+  friendPosition,
+  getServant,
+  assistMode,
+  npLevel,
+  servantLevel,
+  masterEquip,
+} = {}) {
   const lineup = Array.isArray(slots) ? slots.slice(0, 6) : [];
   while (lineup.length < 6) lineup.push(null);
   const friendIndex = Math.trunc(Number(friendPosition)) - 1;
@@ -1332,6 +1467,13 @@ function createBbchannelTeamConfig({ slots, friendPosition, getServant } = {}) {
 
   // 仅保留助战所在位置；队伍配置不再写入任何礼装字段。
   config.assistIdx = friendIndex;
+  config.assistMode = normalizeBbchannelAssistMode(assistMode);
+  // BBC 的御主礼装由 master_info.json 的 SN 序号引用，不是礼装名称。
+  config.master_equip = normalizeBbchannelMasterEquip(masterEquip);
+  // 这两个字段是 BBC 的好友筛选参数，而不是我方从者的养成数据。
+  config.NPlevel = normalizeBbchannelNpLevel(npLevel);
+  const normalizedServantLevel = normalizeBbchannelServantLevel(servantLevel);
+  if (normalizedServantLevel !== null) config.servantLevel = normalizedServantLevel;
   config.usedServant = lineup.slice(0, 3).flatMap((slot, index) => (
     index !== friendIndex && resolveBbchannelServantName(getServant(slot)) ? [index] : []
   ));
@@ -1340,7 +1482,7 @@ function createBbchannelTeamConfig({ slots, friendPosition, getServant } = {}) {
 }
 
 
-Object.assign(exports, { resolveBbchannelServantName, createBbchannelTeamConfig, BbchannelExportError });
+Object.assign(exports, { getDefaultBbchannelAssistMode, getDefaultBbchannelFriendRequirements, normalizeBbchannelAssistMode, normalizeBbchannelMasterEquip, normalizeBbchannelNpLevel, normalizeBbchannelServantLevel, resolveBbchannelServantName, createBbchannelTeamConfig, BBC_ASSIST_MODES, BBC_MASTER_EQUIPS, BbchannelExportError });
   },
   "src/catalog.js": (module, exports, __require) => {
 function asObject(value) {
@@ -1418,7 +1560,7 @@ function mergeCatalog(snapshotCatalog, liveCatalog) {
 Object.assign(exports, { mergeCatalog });
   },
   "src/app.js": (module, exports, __require) => {
-const { applyBattles, calculateFormationSlotCost, calculateSlot, getFormationBondBonus, getRequirement, normalizeTeaPotCount, normalizeUnlockedLevel, numberOr, progressFromRemaining } = __require("src/calculator.js");const { recommendBondCraftEssences } = __require("src/recommendation.js");const { BbchannelExportError, createBbchannelTeamConfig } = __require("src/bbchannel.js");const { mergeCatalog } = __require("src/catalog.js");const { CLASS_NAMES, fetchAtlasBondPoints, fetchLiveCatalog, fetchWikiText, getGrandBattleAllowedClasses, matchesCondition, normalizeConditionRequirement, normalizeText, parseBondEffect, parseServantProfile } = __require("src/data-source.js");
+const { applyBattles, calculateFormationSlotCost, calculateSlot, getFormationBondBonus, getRequirement, normalizeTeaPotCount, normalizeUnlockedLevel, numberOr, progressFromRemaining } = __require("src/calculator.js");const { recommendBondCraftEssences } = __require("src/recommendation.js");const { BBC_ASSIST_MODES, BBC_MASTER_EQUIPS, BbchannelExportError, createBbchannelTeamConfig, getDefaultBbchannelAssistMode, getDefaultBbchannelFriendRequirements, normalizeBbchannelMasterEquip } = __require("src/bbchannel.js");const { mergeCatalog } = __require("src/catalog.js");const { CLASS_NAMES, fetchAtlasBondPoints, fetchLiveCatalog, fetchWikiText, getGrandBattleAllowedClasses, matchesCondition, normalizeConditionRequirement, normalizeText, parseBondEffect, parseServantProfile } = __require("src/data-source.js");
 const STATE_KEY = "fgo-bond-ledger.state.v1";
 const LIVE_CATALOG_KEY = "fgo-bond-ledger.live-catalog.v1";
 const LINEUPS_KEY = "fgo-bond-ledger.lineups.v1";
@@ -1466,6 +1608,7 @@ function defaultState() {
     grandOwnPosition: 0,
     friendGrandServant: false,
     friendPosition: 3,
+    masterEquip: 0,
     costCap: 114,
     teaPotEnabled: false,
     teaPotCount: 0,
@@ -1483,7 +1626,12 @@ function normalizeState(candidate) {
   const source = candidate && typeof candidate === "object" ? candidate : {};
   // 旧版用布尔值表示是否使用茶壶。读取旧存档时将其迁移为一只库存，
   // 但不再把旧字段继续写回新的状态。
-  const { teaPot: legacyTeaPot, countFriendCost: _legacyCountFriendCost, ...stateSource } = source;
+  const {
+    teaPot: legacyTeaPot,
+    countFriendCost: _legacyCountFriendCost,
+    master_equip: legacyMasterEquip,
+    ...stateSource
+  } = source;
   const slots = fallback.slots.map((slot, index) => {
     const saved = stateSource.slots?.[index] || {};
     const legacyDreamfires = Math.min(Math.max(Math.floor(numberOr(saved.dreamfiresUsed)), 0), 5);
@@ -1531,6 +1679,7 @@ function normalizeState(candidate) {
   return {
     ...fallback,
     ...stateSource,
+    masterEquip: normalizeBbchannelMasterEquip(stateSource.masterEquip ?? legacyMasterEquip, fallback.masterEquip),
     teaPotEnabled,
     teaPotCount,
     friendPosition: Math.min(Math.max(Number(stateSource.friendPosition) || fallback.friendPosition, 1), 6),
@@ -1561,6 +1710,7 @@ let recommendationSignature = "";
 let draggedSlotIndex = null;
 let draggedFriendIndex = null;
 let draggedCe = null;
+let bbchannelExportOptionsResolver = null;
 const elements = {
   normalSettings: document.querySelector("#normal-settings"),
   grandSettings: document.querySelector("#grand-settings"),
@@ -1570,6 +1720,8 @@ const elements = {
   grandClass: document.querySelector("#grand-class"),
   grandBattle: document.querySelector("#grand-battle"),
   grandSource: document.querySelector("#grand-source"),
+  masterEquip: document.querySelector("#master-equip"),
+  masterEquipHint: document.querySelector("#master-equip-hint"),
   friendPosition: document.querySelector("#friend-position"),
   costCap: document.querySelector("#cost-cap"),
   teaPotEnabled: document.querySelector("#tea-pot-enabled"),
@@ -1605,6 +1757,13 @@ const elements = {
   checkUpdates: document.querySelector("#check-updates"),
   openBbchannel: document.querySelector("#open-bbchannel"),
   exportBbchannelTeam: document.querySelector("#export-bbchannel-team"),
+  bbchannelAssistModeModal: document.querySelector("#bbchannel-assist-mode-modal"),
+  bbchannelAssistMode: document.querySelector("#bbchannel-assist-mode"),
+  bbchannelAssistModeHint: document.querySelector("#bbchannel-assist-mode-hint"),
+  bbchannelNpLevel: document.querySelector("#bbchannel-np-level"),
+  bbchannelServantLevel: document.querySelector("#bbchannel-servant-level"),
+  bbchannelAssistModeConfirm: document.querySelector("#bbchannel-assist-mode-confirm"),
+  bbchannelAssistModeCancel: document.querySelector("#bbchannel-assist-mode-cancel"),
   openEmulator: document.querySelector("#open-emulator"),
   openToolPaths: document.querySelector("#open-tool-paths"),
   updateModal: document.querySelector("#update-modal"),
@@ -2015,6 +2174,20 @@ function renderGrandOptions() {
   elements.grandSource.href = getCurrentGrandBattle()?.sourceUrl || "https://fgo.wiki/w/%E5%88%86%E7%B1%BB:%E5%86%A0%E4%BD%8D%E6%88%B4%E5%86%A0%E6%88%98";
 }
 
+function renderMasterEquipOptions() {
+  if (!elements.masterEquip) return;
+  elements.masterEquip.innerHTML = BBC_MASTER_EQUIPS
+    .map(({ sn, name }) => `<option value="${sn}">${escapeHtml(name)}</option>`)
+    .join("");
+  state.masterEquip = normalizeBbchannelMasterEquip(state.masterEquip);
+  elements.masterEquip.value = String(state.masterEquip);
+  const selected = BBC_MASTER_EQUIPS.find(({ sn }) => sn === state.masterEquip) || BBC_MASTER_EQUIPS[0];
+  if (elements.masterEquipHint) {
+    elements.masterEquipHint.textContent = `导出 BBC 时写入 master_equip：${selected.sn}`;
+    elements.masterEquipHint.title = `BBchannel master_info.json：${selected.name}`;
+  }
+}
+
 function renderSettings() {
   elements.normalBaseBond.value = Math.max(0, numberOr(state.normalBaseBond));
   elements.friendPosition.innerHTML = Array.from({ length: 6 }, (_, index) => `<option value="${index + 1}">位置 ${index + 1}</option>`).join("");
@@ -2026,6 +2199,7 @@ function renderSettings() {
   elements.bonusCap.value = Math.max(0, numberOr(state.bonusCap, 500));
   elements.battleCount.value = Math.max(1, Math.floor(numberOr(state.battleCount, 1)));
   renderGrandOptions();
+  renderMasterEquipOptions();
 }
 
 function getLineupPayload() {
@@ -2849,6 +3023,38 @@ function exportState() {
   URL.revokeObjectURL(url);
 }
 
+function finishBbchannelExportOptions(value) {
+  const resolver = bbchannelExportOptionsResolver;
+  bbchannelExportOptionsResolver = null;
+  if (elements.bbchannelAssistModeModal?.open) elements.bbchannelAssistModeModal.close();
+  if (resolver) resolver(value);
+}
+
+function chooseBbchannelExportOptions() {
+  const assistMode = getDefaultBbchannelAssistMode(state.mode);
+  const requirements = getDefaultBbchannelFriendRequirements(state.mode);
+  if (!elements.bbchannelAssistModeModal || !elements.bbchannelAssistMode) {
+    return Promise.resolve({ assistMode, ...requirements });
+  }
+  elements.bbchannelAssistMode.innerHTML = BBC_ASSIST_MODES
+    .map((mode) => '<option value="' + escapeHtml(mode) + '">' + escapeHtml(mode) + '</option>')
+    .join("");
+  elements.bbchannelAssistMode.value = assistMode;
+  if (elements.bbchannelNpLevel) elements.bbchannelNpLevel.value = String(requirements.npLevel);
+  if (elements.bbchannelServantLevel) {
+    elements.bbchannelServantLevel.value = requirements.servantLevel === null ? "" : String(requirements.servantLevel);
+  }
+  if (elements.bbchannelAssistModeHint) {
+    elements.bbchannelAssistModeHint.textContent = state.mode === "grand"
+      ? "当前为冠位模式，默认“冠位助战”、好友宝5、Lv.120；可按实际需求调整。"
+      : "当前为普通模式，默认“从者礼装”、好友宝1，且不限定好友从者等级。";
+  }
+  return new Promise((resolve) => {
+    if (bbchannelExportOptionsResolver) finishBbchannelExportOptions(null);
+    bbchannelExportOptionsResolver = resolve;
+    elements.bbchannelAssistModeModal.showModal();
+  });
+}
 async function exportBbchannelTeam() {
   if (!window.fgoDesktop?.exportBbchannelTeamConfig) {
     dataStatus = "BBchannel 队伍配置导出仅在桌面版中可用";
@@ -2856,10 +3062,14 @@ async function exportBbchannelTeam() {
     return;
   }
   try {
+    const exportOptions = await chooseBbchannelExportOptions();
+    if (!exportOptions) return;
     const config = createBbchannelTeamConfig({
       slots: state.slots,
       friendPosition: state.friendPosition,
       getServant,
+      masterEquip: state.masterEquip,
+      ...exportOptions,
     });
     const result = await window.fgoDesktop.exportBbchannelTeamConfig(config);
     if (result?.ok) {
@@ -3219,6 +3429,7 @@ document.addEventListener("change", (event) => {
     state.grandBattleId = "";
   }
   if (target === elements.grandBattle) state.grandBattleId = target.value;
+  if (target === elements.masterEquip) state.masterEquip = normalizeBbchannelMasterEquip(target.value);
   if (target === elements.friendPosition) {
     state.friendPosition = numberOr(target.value, 3);
     if (Number(state.grandOwnPosition) === Number(state.friendPosition)) state.grandOwnPosition = 0;
@@ -3278,6 +3489,21 @@ elements.openBbchannel.addEventListener("click", async () => {
   }
 });
 elements.exportBbchannelTeam.addEventListener("click", () => void exportBbchannelTeam());
+elements.bbchannelAssistModeConfirm?.addEventListener("click", () => {
+  finishBbchannelExportOptions({
+    assistMode: elements.bbchannelAssistMode?.value || null,
+    npLevel: elements.bbchannelNpLevel?.value,
+    servantLevel: elements.bbchannelServantLevel?.value,
+  });
+});
+elements.bbchannelAssistModeCancel?.addEventListener("click", () => finishBbchannelExportOptions(null));
+elements.bbchannelAssistModeModal?.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  finishBbchannelExportOptions(null);
+});
+elements.bbchannelAssistModeModal?.addEventListener("close", () => {
+  if (bbchannelExportOptionsResolver) finishBbchannelExportOptions(null);
+});
 elements.openEmulator.addEventListener("click", async () => {
   if (!window.fgoDesktop) return;
   const result = await window.fgoDesktop.openTool("emulator");

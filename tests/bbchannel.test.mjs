@@ -3,6 +3,12 @@ import test from "node:test";
 import {
   BbchannelExportError,
   createBbchannelTeamConfig,
+  getDefaultBbchannelAssistMode,
+  getDefaultBbchannelFriendRequirements,
+  normalizeBbchannelAssistMode,
+  normalizeBbchannelMasterEquip,
+  normalizeBbchannelNpLevel,
+  normalizeBbchannelServantLevel,
   resolveBbchannelServantName,
 } from "../src/bbchannel.js";
 
@@ -34,6 +40,9 @@ test("导出 BBchannel 队伍档案使用六个位置、零起始助战位和 BB
     servant_4_name: "宇津见绘里濑(Avenger)",
     servant_5_name: null,
     assistIdx: 2,
+    assistMode: "从者礼装",
+    master_equip: 0,
+    NPlevel: 1,
     usedServant: [0, 1],
     connectMode: "ADB方式",
     snapshotDevice: ["normal", "127.0.0.1:7555"],
@@ -41,6 +50,47 @@ test("导出 BBchannel 队伍档案使用六个位置、零起始助战位和 BB
     specialKeys: [],
     server: "CH",
   });
+});
+
+test("御主礼装使用 BBC master_info.json 的 SN 编号并过滤非法值", () => {
+  const customConfig = createBbchannelTeamConfig({
+    slots,
+    friendPosition: 3,
+    getServant,
+    masterEquip: 17,
+  });
+  assert.equal(customConfig.master_equip, 17);
+  assert.equal(normalizeBbchannelMasterEquip("26"), 26);
+  assert.equal(normalizeBbchannelMasterEquip("not-a-number"), 0);
+  assert.equal(normalizeBbchannelMasterEquip(999, 17), 17);
+});
+
+test("BBC 好友宝具与从者等级条件遵循普通、冠位的默认策略并过滤非法值", () => {
+  assert.deepEqual(getDefaultBbchannelFriendRequirements("normal"), { npLevel: 1, servantLevel: null });
+  assert.deepEqual(getDefaultBbchannelFriendRequirements("grand"), { npLevel: 5, servantLevel: 120 });
+  assert.equal(normalizeBbchannelNpLevel(3), 3);
+  assert.equal(normalizeBbchannelNpLevel(8, 5), 5);
+  assert.equal(normalizeBbchannelServantLevel(120), 120);
+  assert.equal(normalizeBbchannelServantLevel(""), null);
+  assert.equal(normalizeBbchannelServantLevel(121), null);
+});
+
+test("账本模式映射 BBC 默认助战识别模式，且导出可覆盖默认值", () => {
+  assert.equal(getDefaultBbchannelAssistMode("normal"), "从者礼装");
+  assert.equal(getDefaultBbchannelAssistMode("grand"), "冠位助战");
+  assert.equal(normalizeBbchannelAssistMode("冠位助战"), "冠位助战");
+  assert.equal(normalizeBbchannelAssistMode("未知模式", "冠位助战"), "冠位助战");
+  const config = createBbchannelTeamConfig({
+    slots,
+    friendPosition: 3,
+    getServant,
+    assistMode: "冠位助战",
+    npLevel: 5,
+    servantLevel: 120,
+  });
+  assert.equal(config.assistMode, "冠位助战");
+  assert.equal(config.NPlevel, 5);
+  assert.equal(config.servantLevel, 120);
 });
 
 test("BBchannel 名称解析使用已知差异映射和空位回退", () => {
@@ -72,7 +122,9 @@ test("BBC export no longer requires a friend craft essence", () => {
     getServant,
   });
   assert.equal(config.assistIdx, 0);
-  assert.equal(Object.hasOwn(config, "assistMode"), false);
+  assert.equal(config.assistMode, "从者礼装");
+  assert.equal(config.NPlevel, 1);
+  assert.equal(Object.hasOwn(config, "servantLevel"), false);
   assert.equal(Object.hasOwn(config, "assistEquip"), false);
-  assert.equal(Object.hasOwn(config, "master_equip"), false);
+  assert.equal(config.master_equip, 0);
 });

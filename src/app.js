@@ -1,6 +1,6 @@
 import { applyBattles, calculateFormationSlotCost, calculateSlot, getFormationBondBonus, getRequirement, normalizeTeaPotCount, normalizeUnlockedLevel, numberOr, progressFromRemaining } from "./calculator.js";
 import { recommendBondCraftEssences } from "./recommendation.js";
-import { BbchannelExportError, createBbchannelTeamConfig } from "./bbchannel.js";
+import { BBC_ASSIST_MODES, BBC_MASTER_EQUIPS, BbchannelExportError, createBbchannelTeamConfig, getDefaultBbchannelAssistMode, getDefaultBbchannelFriendRequirements, normalizeBbchannelMasterEquip } from "./bbchannel.js";
 import { mergeCatalog } from "./catalog.js";
 import {
   CLASS_NAMES,
@@ -62,6 +62,7 @@ function defaultState() {
     grandOwnPosition: 0,
     friendGrandServant: false,
     friendPosition: 3,
+    masterEquip: 0,
     costCap: 114,
     teaPotEnabled: false,
     teaPotCount: 0,
@@ -79,7 +80,12 @@ function normalizeState(candidate) {
   const source = candidate && typeof candidate === "object" ? candidate : {};
   // 旧版用布尔值表示是否使用茶壶。读取旧存档时将其迁移为一只库存，
   // 但不再把旧字段继续写回新的状态。
-  const { teaPot: legacyTeaPot, countFriendCost: _legacyCountFriendCost, ...stateSource } = source;
+  const {
+    teaPot: legacyTeaPot,
+    countFriendCost: _legacyCountFriendCost,
+    master_equip: legacyMasterEquip,
+    ...stateSource
+  } = source;
   const slots = fallback.slots.map((slot, index) => {
     const saved = stateSource.slots?.[index] || {};
     const legacyDreamfires = Math.min(Math.max(Math.floor(numberOr(saved.dreamfiresUsed)), 0), 5);
@@ -127,6 +133,7 @@ function normalizeState(candidate) {
   return {
     ...fallback,
     ...stateSource,
+    masterEquip: normalizeBbchannelMasterEquip(stateSource.masterEquip ?? legacyMasterEquip, fallback.masterEquip),
     teaPotEnabled,
     teaPotCount,
     friendPosition: Math.min(Math.max(Number(stateSource.friendPosition) || fallback.friendPosition, 1), 6),
@@ -157,6 +164,7 @@ let recommendationSignature = "";
 let draggedSlotIndex = null;
 let draggedFriendIndex = null;
 let draggedCe = null;
+let bbchannelExportOptionsResolver = null;
 const elements = {
   normalSettings: document.querySelector("#normal-settings"),
   grandSettings: document.querySelector("#grand-settings"),
@@ -166,6 +174,8 @@ const elements = {
   grandClass: document.querySelector("#grand-class"),
   grandBattle: document.querySelector("#grand-battle"),
   grandSource: document.querySelector("#grand-source"),
+  masterEquip: document.querySelector("#master-equip"),
+  masterEquipHint: document.querySelector("#master-equip-hint"),
   friendPosition: document.querySelector("#friend-position"),
   costCap: document.querySelector("#cost-cap"),
   teaPotEnabled: document.querySelector("#tea-pot-enabled"),
@@ -201,6 +211,13 @@ const elements = {
   checkUpdates: document.querySelector("#check-updates"),
   openBbchannel: document.querySelector("#open-bbchannel"),
   exportBbchannelTeam: document.querySelector("#export-bbchannel-team"),
+  bbchannelAssistModeModal: document.querySelector("#bbchannel-assist-mode-modal"),
+  bbchannelAssistMode: document.querySelector("#bbchannel-assist-mode"),
+  bbchannelAssistModeHint: document.querySelector("#bbchannel-assist-mode-hint"),
+  bbchannelNpLevel: document.querySelector("#bbchannel-np-level"),
+  bbchannelServantLevel: document.querySelector("#bbchannel-servant-level"),
+  bbchannelAssistModeConfirm: document.querySelector("#bbchannel-assist-mode-confirm"),
+  bbchannelAssistModeCancel: document.querySelector("#bbchannel-assist-mode-cancel"),
   openEmulator: document.querySelector("#open-emulator"),
   openToolPaths: document.querySelector("#open-tool-paths"),
   updateModal: document.querySelector("#update-modal"),
@@ -611,6 +628,20 @@ function renderGrandOptions() {
   elements.grandSource.href = getCurrentGrandBattle()?.sourceUrl || "https://fgo.wiki/w/%E5%88%86%E7%B1%BB:%E5%86%A0%E4%BD%8D%E6%88%B4%E5%86%A0%E6%88%98";
 }
 
+function renderMasterEquipOptions() {
+  if (!elements.masterEquip) return;
+  elements.masterEquip.innerHTML = BBC_MASTER_EQUIPS
+    .map(({ sn, name }) => `<option value="${sn}">${escapeHtml(name)}</option>`)
+    .join("");
+  state.masterEquip = normalizeBbchannelMasterEquip(state.masterEquip);
+  elements.masterEquip.value = String(state.masterEquip);
+  const selected = BBC_MASTER_EQUIPS.find(({ sn }) => sn === state.masterEquip) || BBC_MASTER_EQUIPS[0];
+  if (elements.masterEquipHint) {
+    elements.masterEquipHint.textContent = `导出 BBC 时写入 master_equip：${selected.sn}`;
+    elements.masterEquipHint.title = `BBchannel master_info.json：${selected.name}`;
+  }
+}
+
 function renderSettings() {
   elements.normalBaseBond.value = Math.max(0, numberOr(state.normalBaseBond));
   elements.friendPosition.innerHTML = Array.from({ length: 6 }, (_, index) => `<option value="${index + 1}">位置 ${index + 1}</option>`).join("");
@@ -622,6 +653,7 @@ function renderSettings() {
   elements.bonusCap.value = Math.max(0, numberOr(state.bonusCap, 500));
   elements.battleCount.value = Math.max(1, Math.floor(numberOr(state.battleCount, 1)));
   renderGrandOptions();
+  renderMasterEquipOptions();
 }
 
 function getLineupPayload() {
@@ -1445,6 +1477,38 @@ function exportState() {
   URL.revokeObjectURL(url);
 }
 
+function finishBbchannelExportOptions(value) {
+  const resolver = bbchannelExportOptionsResolver;
+  bbchannelExportOptionsResolver = null;
+  if (elements.bbchannelAssistModeModal?.open) elements.bbchannelAssistModeModal.close();
+  if (resolver) resolver(value);
+}
+
+function chooseBbchannelExportOptions() {
+  const assistMode = getDefaultBbchannelAssistMode(state.mode);
+  const requirements = getDefaultBbchannelFriendRequirements(state.mode);
+  if (!elements.bbchannelAssistModeModal || !elements.bbchannelAssistMode) {
+    return Promise.resolve({ assistMode, ...requirements });
+  }
+  elements.bbchannelAssistMode.innerHTML = BBC_ASSIST_MODES
+    .map((mode) => '<option value="' + escapeHtml(mode) + '">' + escapeHtml(mode) + '</option>')
+    .join("");
+  elements.bbchannelAssistMode.value = assistMode;
+  if (elements.bbchannelNpLevel) elements.bbchannelNpLevel.value = String(requirements.npLevel);
+  if (elements.bbchannelServantLevel) {
+    elements.bbchannelServantLevel.value = requirements.servantLevel === null ? "" : String(requirements.servantLevel);
+  }
+  if (elements.bbchannelAssistModeHint) {
+    elements.bbchannelAssistModeHint.textContent = state.mode === "grand"
+      ? "当前为冠位模式，默认“冠位助战”、好友宝5、Lv.120；可按实际需求调整。"
+      : "当前为普通模式，默认“从者礼装”、好友宝1，且不限定好友从者等级。";
+  }
+  return new Promise((resolve) => {
+    if (bbchannelExportOptionsResolver) finishBbchannelExportOptions(null);
+    bbchannelExportOptionsResolver = resolve;
+    elements.bbchannelAssistModeModal.showModal();
+  });
+}
 async function exportBbchannelTeam() {
   if (!window.fgoDesktop?.exportBbchannelTeamConfig) {
     dataStatus = "BBchannel 队伍配置导出仅在桌面版中可用";
@@ -1452,10 +1516,14 @@ async function exportBbchannelTeam() {
     return;
   }
   try {
+    const exportOptions = await chooseBbchannelExportOptions();
+    if (!exportOptions) return;
     const config = createBbchannelTeamConfig({
       slots: state.slots,
       friendPosition: state.friendPosition,
       getServant,
+      masterEquip: state.masterEquip,
+      ...exportOptions,
     });
     const result = await window.fgoDesktop.exportBbchannelTeamConfig(config);
     if (result?.ok) {
@@ -1815,6 +1883,7 @@ document.addEventListener("change", (event) => {
     state.grandBattleId = "";
   }
   if (target === elements.grandBattle) state.grandBattleId = target.value;
+  if (target === elements.masterEquip) state.masterEquip = normalizeBbchannelMasterEquip(target.value);
   if (target === elements.friendPosition) {
     state.friendPosition = numberOr(target.value, 3);
     if (Number(state.grandOwnPosition) === Number(state.friendPosition)) state.grandOwnPosition = 0;
@@ -1874,6 +1943,21 @@ elements.openBbchannel.addEventListener("click", async () => {
   }
 });
 elements.exportBbchannelTeam.addEventListener("click", () => void exportBbchannelTeam());
+elements.bbchannelAssistModeConfirm?.addEventListener("click", () => {
+  finishBbchannelExportOptions({
+    assistMode: elements.bbchannelAssistMode?.value || null,
+    npLevel: elements.bbchannelNpLevel?.value,
+    servantLevel: elements.bbchannelServantLevel?.value,
+  });
+});
+elements.bbchannelAssistModeCancel?.addEventListener("click", () => finishBbchannelExportOptions(null));
+elements.bbchannelAssistModeModal?.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  finishBbchannelExportOptions(null);
+});
+elements.bbchannelAssistModeModal?.addEventListener("close", () => {
+  if (bbchannelExportOptionsResolver) finishBbchannelExportOptions(null);
+});
 elements.openEmulator.addEventListener("click", async () => {
   if (!window.fgoDesktop) return;
   const result = await window.fgoDesktop.openTool("emulator");
