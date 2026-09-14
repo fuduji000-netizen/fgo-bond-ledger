@@ -20,6 +20,7 @@
 - 已创建并正式发布 `v0.1.2` Release，上传 `fgo-bond-ledger-0.1.2.exe`、对应 `.blockmap` 与 `latest.yml`。
 - 已验证 `releases/latest/download/latest.yml`、安装包和 `.blockmap` 的公开链接均返回 HTTP 200；清单中的版本、文件名和 SHA-512 与本地构建产物一致。
 - 本地 `codex/quantplatform-core-rebuild` 已同步到远程发布提交 `0903604d82c023c4b054ddc4bff473971e7f2e48`，工作树干净。
+- 后续仅补充本交接记录，产生本地提交 `6981b416b0c6551277b688bb58e93099fba63eaf`；两次推送均因当前网络无法连接 GitHub 的 Git HTTPS 端点而失败，远程仍停留在 `0903604`，不得将本地新增记录视为已同步。
 
 ## 后续版本流程
 
