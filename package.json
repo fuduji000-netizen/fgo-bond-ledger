@@ -1,0 +1,47 @@
+{
+  "name": "fgo-bond-ledger",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "test": "node --test \"tests/*.test.mjs\"",
+    "build:standalone": "node scripts/build-standalone.mjs",
+    "build:update-manifest": "node scripts/generate-update-manifest.mjs",
+    "sync:data": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sync-mooncell.ps1",
+    "start:desktop": "electron .",
+    "dist:win": "npm run build:standalone && electron-builder --win nsis --x64 && npm run build:update-manifest"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^35.0.3",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.fuduj.fgobondledger",
+    "productName": "迦勒底羁绊账本",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "index.html",
+      "styles.css",
+      "src/**/*.js",
+      "data/**/*.js",
+      "desktop/**/*.cjs",
+      "desktop/**/*.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

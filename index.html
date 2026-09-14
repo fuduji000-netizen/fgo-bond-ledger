@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#17222d" />
+    <title>迦勒底羁绊账本</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"><span>F</span></div>
+          <div>
+            <p class="eyebrow">FATE/GRAND ORDER</p>
+            <h1>迦勒底羁绊账本</h1>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="data-status" id="data-status" aria-live="polite"></span>
+          <button class="button quiet" id="open-owned-ces" type="button" title="设置自己持有的羁绊加成礼装">持有羁绊礼装</button>
+          <button class="button quiet" id="sync-data" type="button" title="从 Mooncell 同步图鉴索引和冠位关卡">同步数据</button>
+          <button class="button quiet desktop-only" id="check-updates" type="button">检测更新</button>
+          <button class="button quiet desktop-only" id="open-bbchannel" type="button">打开 BBchannel</button>
+          <button class="button quiet desktop-only" id="export-bbchannel-team" type="button" title="导出可由 BBchannel“文件”菜单载入的队伍档案">导出 BBchannel 队伍配置</button>
+          <button class="button quiet desktop-only" id="open-emulator" type="button">打开模拟器</button>
+          <button class="button quiet desktop-only" id="open-tool-paths" type="button">设置 BBchannel 与模拟器路径</button>
+          <button class="button quiet" id="export-state" type="button" title="导出当前编队与战斗记录">导出</button>
+          <label class="button quiet file-button" title="导入此前导出的编队文件">
+            导入
+            <input id="import-state" type="file" accept="application/json" />
+          </label>
+        </div>
+      </header>
+
+      <main class="main-layout">
+        <section class="control-strip" aria-label="模式">
+          <div class="segmented" role="group" aria-label="计算模式">
+            <button type="button" data-mode="normal">普通模式</button>
+            <button type="button" data-mode="grand">冠位戴冠战</button>
+          </div>
+          <div class="cost-summary" id="cost-summary" aria-live="polite"></div>
+          <div class="battle-summary" id="battle-summary" aria-live="polite"></div>
+        </section>
+
+        <section class="workspace">
+          <aside class="settings-panel" aria-label="战斗设定">
+            <div class="panel-heading">
+              <span class="section-kicker">CALCULATION</span>
+              <h2>战斗设定</h2>
+            </div>
+
+            <div class="setting-group lineup-archive">
+              <label class="field-label" for="lineup-name">编队档案名称</label>
+              <input id="lineup-name" type="text" maxlength="40" autocomplete="off" />
+              <div class="inline-control">
+                <select id="saved-lineups" aria-label="已保存的编队"></select>
+                <button class="button primary" id="save-lineup" type="button">保存</button>
+              </div>
+              <div class="archive-actions">
+                <button class="text-button" id="load-lineup" type="button">载入所选档案</button>
+                <button class="text-button danger-text" id="delete-lineup" type="button">删除所选档案</button>
+              </div>
+            </div>
+
+            <div class="setting-group" id="normal-settings">
+              <label class="field-label" for="normal-base-bond">关卡基础羁绊</label>
+              <input class="number-input" id="normal-base-bond" type="number" min="0" step="1" inputmode="numeric" />
+            </div>
+
+            <div class="setting-group hidden" id="grand-settings">
+              <label class="field-label" for="grand-class">冠位职阶</label>
+              <select id="grand-class"></select>
+              <label class="field-label" for="grand-battle">关卡</label>
+              <select id="grand-battle"></select>
+              <a class="source-link" id="grand-source" target="_blank" rel="noreferrer">Mooncell 关卡来源</a>
+            </div>
+
+            <div class="setting-group divider-top">
+              <label class="field-label" for="friend-position">好友位置</label>
+              <select id="friend-position"></select>
+              <label class="field-label" for="cost-cap">队伍 Cost 上限</label>
+              <input class="number-input" id="cost-cap" type="number" min="0" step="1" inputmode="numeric" />
+
+            </div>
+
+            <div class="setting-group divider-top">
+              <label class="toggle-row" for="tea-pot-enabled">
+                <input id="tea-pot-enabled" type="checkbox" />
+                <span>使用占星茶壶</span>
+              </label>
+              <label class="field-label" for="tea-pot-count">占星茶壶数量</label>
+              <input class="number-input" id="tea-pot-count" type="number" min="0" step="1" inputmode="numeric" />
+              <label class="field-label" for="party-bonus">全队额外加成 (%)</label>
+              <input class="number-input" id="party-bonus" type="number" min="0" step="0.1" inputmode="decimal" />
+              <label class="field-label" for="bonus-cap">羁绊加成上限 (%)</label>
+              <input class="number-input" id="bonus-cap" type="number" min="0" step="1" inputmode="numeric" />
+            </div>
+
+            <div class="setting-group divider-top combat-log">
+              <label class="field-label" for="battle-count">记入战斗次数</label>
+              <div class="inline-control">
+                <input class="number-input" id="battle-count" type="number" min="1" step="1" inputmode="numeric" />
+                <button class="button primary" id="apply-battles" type="button">记入</button>
+              </div>
+              <button class="text-button" id="undo-battles" type="button">撤销上次记入</button>
+              <div class="log-list" id="battle-log" aria-live="polite"></div>
+            </div>
+          </aside>
+
+          <section class="roster-panel" aria-label="编队">
+            <div class="roster-heading">
+              <div>
+                <span class="section-kicker">FORMATION</span>
+                <h2>编队</h2>
+              </div>
+              <div class="roster-actions">
+                <button class="text-button" id="recommend-ces" type="button">牵绊最大化礼装推荐</button>
+                <button class="text-button" id="clear-roster" type="button">清空编队</button>
+              </div>
+            </div>
+            <div class="formation-labels" aria-hidden="true">
+              <span>先发成员（第一至第三）</span>
+              <span>支援成员（第四至第六）</span>
+            </div>
+            <div class="cost-warning hidden" id="cost-warning" role="status" aria-live="polite"></div>
+            <div class="party-grid" id="party-grid"></div>
+            <section class="recommendation-panel hidden" id="recommendation-panel" aria-label="礼装推荐" aria-live="polite">
+              <div class="recommendation-heading">
+                <div>
+                  <span class="section-kicker">BOND LOADOUT</span>
+                  <h2>礼装推荐</h2>
+                </div>
+                <button class="button primary" id="apply-recommendation" type="button">应用方案</button>
+              </div>
+              <div id="recommendation-output"></div>
+            </section>
+          </section>
+        </section>
+
+        <section class="source-band">
+          <span id="source-meta"></span>
+          <a href="https://fgo.wiki/w/%E6%A8%A1%E6%9D%BF:%E7%89%B5%E7%BB%8A%E7%82%B9%E6%95%B0" target="_blank" rel="noreferrer">牵绊阈值</a>
+          <a href="https://fgo.wiki/w/%E7%A4%BC%E8%A3%85%E5%9B%BE%E9%89%B4/%E6%95%B0%E6%8D%AE" target="_blank" rel="noreferrer">礼装数据</a>
+          <a href="https://news.fate-go.jp/2025/0905hwopj/" target="_blank" rel="noreferrer">加成上限</a>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="picker-modal" id="servant-modal" aria-labelledby="servant-modal-title">
+      <div class="modal-head">
+        <div>
+          <span class="section-kicker">SERVANT DATABASE</span>
+          <h2 id="servant-modal-title">选择从者</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-modal="servant-modal" aria-label="关闭">×</button>
+      </div>
+      <div class="picker-controls">
+        <input id="servant-search" type="search" autocomplete="off" placeholder="搜索从者" />
+        <select id="servant-class-filter" aria-label="按职阶筛选"></select>
+        <select id="servant-star-filter" aria-label="按星级筛选">
+          <option value="">全部星级</option>
+          <option value="5">★★★★★</option>
+          <option value="4">★★★★</option>
+          <option value="3">★★★</option>
+          <option value="2">★★</option>
+          <option value="1">★</option>
+        </select>
+      </div>
+      <div class="picker-count" id="servant-count"></div>
+      <div class="picker-list servant-list" id="servant-list"></div>
+    </dialog>
+
+    <dialog class="picker-modal" id="ce-modal" aria-labelledby="ce-modal-title">
+      <div class="modal-head">
+        <div>
+          <span class="section-kicker">CRAFT ESSENCE DATABASE</span>
+          <h2 id="ce-modal-title">选择羁绊加成礼装</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-modal="ce-modal" aria-label="关闭">×</button>
+      </div>
+      <div class="picker-controls">
+        <input id="ce-search" type="search" autocomplete="off" placeholder="搜索礼装" />
+      </div>
+      <div class="picker-count" id="ce-count"></div>
+      <div class="picker-list ce-list" id="ce-list"></div>
+    </dialog>
+
+    <dialog class="picker-modal" id="owned-ce-modal" aria-labelledby="owned-ce-modal-title">
+      <div class="modal-head">
+        <div>
+          <span class="section-kicker">OWNED CRAFT ESSENCES</span>
+          <h2 id="owned-ce-modal-title">持有羁绊礼装</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-modal="owned-ce-modal" aria-label="关闭">×</button>
+      </div>
+      <div class="picker-controls ce-modal-controls">
+        <input id="owned-ce-search" type="search" autocomplete="off" placeholder="搜索礼装" />
+      </div>
+      <div class="picker-count" id="owned-ce-count"></div>
+      <div class="picker-list ce-list owned-ce-list" id="owned-ce-list"></div>
+    </dialog>
+
+    <dialog class="picker-modal compact-modal" id="update-modal" aria-labelledby="update-title">
+      <div class="modal-head">
+        <div>
+          <span class="section-kicker">APPLICATION UPDATE</span>
+          <h2 id="update-title">检测更新</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-modal="update-modal" aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-content">
+        <p id="update-message">正在检查更新。</p>
+        <div class="dialog-actions">
+          <button class="button primary" id="update-primary" type="button">立即更新</button>
+          <button class="button" id="update-later" type="button" data-close-modal="update-modal">暂不更新</button>
+          <button class="text-button" id="update-skip" type="button">跳过此版本</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="picker-modal compact-modal" id="tool-paths-modal" aria-labelledby="tool-paths-title">
+      <div class="modal-head">
+        <div>
+          <span class="section-kicker">TOOL PATHS</span>
+          <h2 id="tool-paths-title">外部程序路径</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-modal="tool-paths-modal" aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-content tool-path-fields">
+        <label class="field-label" for="bbchannel-path">BBchannel</label>
+        <div class="inline-control"><input id="bbchannel-path" type="text" readonly /><button class="button" type="button" data-choose-tool-path="bbchannel">选择</button></div>
+        <label class="field-label" for="emulator-path">模拟器</label>
+        <div class="inline-control"><input id="emulator-path" type="text" readonly /><button class="button" type="button" data-choose-tool-path="emulator">选择</button></div>
+      </div>
+    </dialog>
+
+    <script src="./data/mooncell-snapshot.js"></script>
+    <script src="./src/app.standalone.js?v=20260913-4"></script>
+  </body>
+</html>
+
+

@@ -1,0 +1,28 @@
+--- src/app.js
++++ src/app.js
+@@ -574,10 +574,22 @@
+   return state.mode === "grand" && index === getFriendIndex() ? Boolean(state.friendGrandServant) : Number(state.grandOwnPosition) === index + 1;
+ }
+ 
+ function getSlotCost(slot, index) {
+   if (index === getFriendIndex() && !state.countFriendCost) return 0;
+   if (!getServant(slot)) return 0;
+-  return numberOr(getServant(slot)?.cost) + (isGrandServantSlot(index) ? 0 : numberOr(getCe(slot)?.cost));
++  
++  let totalCost = numberOr(getServant(slot)?.cost);
++  
++  // 常规礼装位：冠位从者不计礼装 Cost
++  if (!isGrandServantSlot(index)) {
++    totalCost += numberOr(getCe(slot)?.cost);
++  }
++  
++  // 冠位加成礼装位：无论是否冠位从者都要计入
++  for (let i = 0; i < GRAND_CE_SLOTS; i++) {
++    const grandCe = getCe({ ceId: slot.grandCeIds?.[i] });
++    if (grandCe) totalCost += numberOr(grandCe.cost);
++  }
++  
++  return totalCost;
+ }
+ 
+ function getCostSummary() {
